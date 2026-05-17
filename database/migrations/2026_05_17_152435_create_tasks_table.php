@@ -9,14 +9,15 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
+    public function up()
     {
         Schema::create('tasks', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('course_id')->constrained()->onDelete('cascade');
-            $table->string('title');
-            $table->text('description')->nullable();
-            $table->date('due_date'); // Control por fecha para evitar errores
+            // Vinculamos la tarea directamente al maestro (usuario)
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+
+            $table->string('title'); // Ej. "Calificar exámenes"
+            $table->boolean('is_completed')->default(false); // Para el checkbox (terminada o no)
             $table->timestamps();
         });
     }

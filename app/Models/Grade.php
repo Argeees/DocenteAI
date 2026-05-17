@@ -1,18 +1,18 @@
 <?php
-
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Grade extends Model
 {
-    protected $fillable = ['title', 'description', 'due_date'];
-    public function task() {
-        return $this->belongsTo(Task::class);
-    }
+    use HasFactory;
 
-    public function student() {
+    protected $fillable = ['subject_id', 'student_id', 'description', 'score'];
+
+    // Relación: Una calificación pertenece a un alumno
+    public function student()
+    {
         return $this->belongsTo(Student::class);
     }
-    //
 }

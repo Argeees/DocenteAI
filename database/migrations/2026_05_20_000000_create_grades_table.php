@@ -9,18 +9,18 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
+    public function up()
     {
         Schema::create('grades', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('task_id')->constrained()->onDelete('cascade');
+            // Conectamos la calificación con la materia
+            $table->foreignId('subject_id')->constrained()->onDelete('cascade');
+            // Conectamos la calificación con el alumno
             $table->foreignId('student_id')->constrained()->onDelete('cascade');
-            $table->decimal('score', 5, 2)->nullable(); // Promedios exactos
-            $table->text('observations')->nullable(); // Observaciones por alumno
-            $table->timestamps();
 
-            // RESTRICCIÓN CLAVE: Evita calificar al mismo alumno dos veces en la misma tarea
-            $table->unique(['task_id', 'student_id']);
+            $table->string('description'); // Ej: "Examen de Matemáticas", "Proyecto Final"
+            $table->decimal('score', 5, 2); // Permite calificaciones con decimales (ej: 9.50 o 10.00)
+            $table->timestamps();
         });
     }
 

@@ -10,10 +10,15 @@ class Student extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['first_name', 'last_name', 'identifier'];
+    protected $fillable = ['user_id','first_name', 'last_name', 'identifier'];
 
     public function user() {
         return $this->belongsTo(User::class);
+    }
+    // Relación: Un alumno pertenece a muchas materias
+    public function subjects()
+    {
+        return $this->belongsToMany(Subject::class);
     }
 
     public function grades() {

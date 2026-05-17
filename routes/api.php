@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\AiPlannerController;
+use App\Http\Controllers\Api\LessonPlanController;
+use App\Http\Controllers\Api\SubjectController;
 
 // ==========================================
 // RUTAS PÚBLICAS (No requieren token)
@@ -34,5 +36,14 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Planeador IA (Ruta conectada a React y Gemini)
     Route::post('/generate-plan', [AiPlannerController::class, 'generate']);
+    Route::apiResource('lesson-plans', LessonPlanController::class);
+    
+    // Materias y Matriculación
+    Route::apiResource('subjects', SubjectController::class);
+    Route::post('/subjects/{subject}/students', [SubjectController::class, 'syncStudents']);
+
+    // Calificaciones (Rutas anidadas por materia)
+    Route::get('/subjects/{subject}/grades', [GradeController::class, 'index']);
+    Route::post('/subjects/{subject}/grades', [GradeController::class, 'store']);
 
 });

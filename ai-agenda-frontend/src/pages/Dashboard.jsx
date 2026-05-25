@@ -1,10 +1,17 @@
 // src/pages/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { Users, CheckSquare, BrainCircuit, LogOut, Sparkles, Home, BookOpen, Loader2, Send, UserPlus, X, Edit2, Trash2, Save, Archive, Library, Plus, GraduationCap, ArrowLeft, ClipboardEdit } from 'lucide-react';
+import { Users, CheckSquare, BrainCircuit, LogOut, Sparkles, Home, Eye, BookOpen, Loader2, Send, UserPlus, X, Edit2, Trash2, Save, Archive, Library, Plus, GraduationCap, ArrowLeft, ClipboardEdit, Download, Calendar } from 'lucide-react';
 import api from '../api/axios';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
+import 'react-circular-progressbar/dist/styles.css';
+import html2pdf from 'html2pdf.js';
+import { jsPDF } from "jspdf";
 
 export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('home');
+    const navigate = useNavigate();
 
     // ==========================================
     // ESTADOS
@@ -16,12 +23,16 @@ export default function Dashboard() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [savedPlans, setSavedPlans] = useState([]);
     const [isSavingPlan, setIsSavingPlan] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     // Alumnos
     const [students, setStudents] = useState([]);
     const [showStudentModal, setShowStudentModal] = useState(false);
     const [newStudent, setNewStudent] = useState({ first_name: '', last_name: '', identifier: '' });
     const [editingId, setEditingId] = useState(null);
+    const [selectedStudentProfile, setSelectedStudentProfile] = useState(null);
+    const [loadingProfile, setLoadingProfile] = useState(false);
 
     // Materias
     const [subjects, setSubjects] = useState([]);
@@ -44,6 +55,9 @@ export default function Dashboard() {
     const [tasks, setTasks] = useState([]);
     const [newTaskTitle, setNewTaskTitle] = useState('');
     const [isSavingTask, setIsSavingTask] = useState(false);
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.is_completed).length;
+    const taskPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     // ==========================================
     // EFECTOS DE CARGA Y FETCH ULTRA-SEGUROS
@@ -69,14 +83,6 @@ export default function Dashboard() {
             const data = response.data?.data || response.data;
             setSubjects(Array.isArray(data) ? data : []);
         } catch (error) { setSubjects([]); }
-    };
-
-    const fetchPlans = async () => {
-        try {
-            const response = await api.get('/api/lesson-plans');
-            const data = response.data?.data || response.data;
-            setSavedPlans(Array.isArray(data) ? data : []);
-        } catch (error) { setSavedPlans([]); }
     };
 
     const fetchTasks = async () => {
@@ -124,6 +130,47 @@ export default function Dashboard() {
         setGradeTaskName('');
         setStudentScores({});
         setActiveTab('gradebook');
+    };
+
+    // Función auxiliar para redondear promedios a un decimal
+    const roundAverage = (val) => {
+        if (!val || isNaN(val)) return '0.0';
+        return Math.round(val * 10) / 10;
+    };
+
+    const handleDownloadPDF = (plan) => {
+        if (!plan) return;
+
+        const doc = new jsPDF();
+        const margin = 20;
+        const pageWidth = 170; // Ancho del texto
+        const pageHeight = 280; // Altura máxima antes de saltar
+        let cursorY = 45; // Posición vertical inicial
+
+        // Configuración inicial
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(20);
+        doc.text(plan.topic, margin, 20);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(12);
+        doc.text(`Grado: ${plan.grade}`, margin, 30);
+        doc.line(margin, 35, 190, 35);
+
+        // Dividir contenido en líneas
+        const lines = doc.splitTextToSize(plan.content, pageWidth);
+
+        // Lógica de paginación
+        lines.forEach((line) => {
+            if (cursorY > pageHeight) {
+                doc.addPage();
+                cursorY = 20; // Reiniciar cursor en la nueva página
+            }
+            doc.text(line, margin, cursorY);
+            cursorY += 7; // Espaciado entre líneas
+        });
+        
+        doc.save(`Planeacion_${plan.topic.replace(/\s+/g, '_')}.pdf`);
     };
 
     const handleSaveGrades = async (e) => {
@@ -248,6 +295,22 @@ export default function Dashboard() {
         setEditingId(null);
     };
 
+    const handleViewProfile = async (studentId) => {
+        setLoadingProfile(true);
+        setActiveTab('student-profile');
+        try {
+            const response = await api.get(`/api/students/${studentId}/profile`);
+            // Guardamos todo el objeto data que viene del backend
+            setSelectedStudentProfile(response.data?.data || response.data);
+        } catch (error) {
+            console.error("Error al obtener el perfil del alumno", error);
+            alert("No se pudo cargar el perfil del estudiante.");
+            setActiveTab('students');
+        } finally {
+            setLoadingProfile(false);
+        }
+    };
+
     // ==========================================
     // FUNCIONES: IA Y AGENDA
     // ==========================================
@@ -278,13 +341,49 @@ export default function Dashboard() {
         finally { setIsSavingPlan(false); }
     };
 
-    const handleLogout = async () => {
+    const fetchPlans = async () => {
         try {
-            await api.post('/api/logout');
-            localStorage.removeItem('auth_token');
-            window.location.href = '/login';
-        } catch (error) { console.error(error); }
+            const response = await api.get('/api/lesson-plans');
+            console.log("Datos recibidos de la agenda:", response.data); // <--- MIRA ESTO EN LA CONSOLA (F12)
+            const data = response.data?.data || response.data;
+            setSavedPlans(Array.isArray(data) ? data : []);
+        } catch (error) { 
+            console.error("Error al obtener agenda:", error);
+            setSavedPlans([]); 
+        }
     };
+
+    // Borra una planeación específica
+    const handleDeletePlan = async (id) => {
+        if (!window.confirm("¿Seguro que deseas eliminar esta planeación?")) return;
+        try {
+            await api.delete(`/api/lesson-plans/${id}`);
+            fetchPlans(); // Refresca la lista automáticamente
+        } catch (error) {
+            alert("Error al eliminar la planeación.");
+        }
+    };
+
+    const handleLogout = async () => {
+    try {
+        // 1. Le avisamos a Laravel que destruya el token en el servidor
+        await api.post('/api/logout');
+    } catch (error) {
+        // Si el servidor falla o el token ya expiró, imprimimos el error 
+        // pero continuamos con la limpieza en el cliente para no bloquear al usuario
+        console.error("Error al revocar token en servidor:", error);
+    } finally {
+        // 2. CRUCIAL: Borramos el token exacto que usa tu axios.js
+        localStorage.removeItem('auth_token'); 
+
+        // Opcional: Si manejas estados de usuario en un Context, resetealo aquí
+        // setUser(null); 
+
+        // 3. Redirigimos al usuario a la Landing Page (asumiendo que es la ruta "/")
+        // Si tu landing es otra ruta, por ejemplo '/landing', cámbiala aquí
+        navigate('/', { replace: true }); 
+    }
+};
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans relative">
@@ -329,62 +428,95 @@ export default function Dashboard() {
                         </div>
 
                         {/* WIDGET DE LISTA DE PENDIENTES */}
-                        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm max-w-2xl animate-in fade-in slide-in-from-bottom-5 duration-700">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
-                                    <CheckSquare className="w-6 h-6" />
+                        {/* WIDGET DE LISTA DE PENDIENTES CON GRÁFICA SENCILLA */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start max-w-5xl">
+                            
+                            {/* LADO IZQUIERDO: TU LISTA ACTUAL (Ocupa 2 columnas) */}
+                            <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-5 duration-700">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
+                                        <CheckSquare className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-900">Lista de Pendientes</h2>
+                                        <p className="text-sm text-slate-500">Organiza tus actividades escolares del día</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-slate-900">Lista de Pendientes</h2>
-                                    <p className="text-sm text-slate-500">Organiza tus actividades escolares del día</p>
-                                </div>
-                            </div>
 
-                            <form onSubmit={handleCreateTask} className="flex gap-2 mb-4">
-                                <input
-                                    type="text"
-                                    value={newTaskTitle}
-                                    onChange={(e) => setNewTaskTitle(e.target.value)}
-                                    placeholder="Ej. Revisar maquetas de geografía..."
-                                    className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 transition-all"
-                                    disabled={isSavingTask}
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={isSavingTask || !newTaskTitle.trim()}
-                                    className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center"
-                                >
-                                    <Plus className="w-5 h-5" />
-                                </button>
-                            </form>
+                                <form onSubmit={handleCreateTask} className="flex gap-2 mb-4">
+                                    <input
+                                        type="text"
+                                        value={newTaskTitle}
+                                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                                        placeholder="Ej. Revisar maquetas de geografía..."
+                                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-amber-500 transition-all"
+                                        disabled={isSavingTask}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={isSavingTask || !newTaskTitle.trim()}
+                                        className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 flex items-center justify-center"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                    </button>
+                                </form>
 
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                {tasks.length === 0 ? (
-                                    <p className="text-sm text-slate-400 text-center py-6">No tienes tareas pendientes. ¡Buen trabajo!</p>
-                                ) : (
-                                    tasks.map(task => (
-                                        <div key={task.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl group hover:bg-slate-100/50 transition-all">
-                                            <div className="flex items-center gap-3">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={task.is_completed}
-                                                    onChange={() => handleToggleTask(task)}
-                                                    className="w-5 h-5 text-amber-600 border-slate-300 rounded focus:ring-amber-500 cursor-pointer"
-                                                />
-                                                <span className={`text-sm font-medium transition-all ${task.is_completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                                                    {task.title}
-                                                </span>
+                                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                    {tasks.length === 0 ? (
+                                        <p className="text-sm text-slate-400 text-center py-6">No tienes tareas pendientes. ¡Buen trabajo!</p>
+                                    ) : (
+                                        tasks.map(task => (
+                                            <div key={task.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-xl group hover:bg-slate-100/50 transition-all">
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={task.is_completed}
+                                                        onChange={() => handleToggleTask(task)}
+                                                        className="w-5 h-5 text-amber-600 border-slate-300 rounded focus:ring-amber-500 cursor-pointer accent-amber-600"
+                                                    />
+                                                    <span className={`text-sm font-medium transition-all ${task.is_completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                                        {task.title}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDeleteTask(task.id)}
+                                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-1 rounded transition-all"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={() => handleDeleteTask(task.id)}
-                                                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-1 rounded transition-all"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
+                                        ))
+                                    )}
+                                </div>
                             </div>
+
+                            {/* LADO DERECHO: GRÁFICA ULTRA CORTA CON LIBRERÍA */}
+                            <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-full flex flex-col justify-between min-h-[260px]">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-900 mb-1">Progreso</h3>
+                                    <p className="text-xs text-slate-500">Rendimiento diario</p>
+                                </div>
+
+                                {/* La librería hace toda la magia aquí */}
+                                <div className="w-32 h-32 mx-auto my-4">
+                                    <CircularProgressbar
+                                        value={tasks.length > 0 ? Math.round((tasks.filter(t => t.is_completed).length / tasks.length) * 100) : 0}
+                                        text={`${tasks.length > 0 ? Math.round((tasks.filter(t => t.is_completed).length / tasks.length) * 100) : 0}%`}
+                                        styles={buildStyles({
+                                            pathColor: '#F59E0B',   // Tu color Amber de Tailwind
+                                            textColor: '#1E293B',   // Slate-800 para el porcentaje
+                                            trailColor: '#F1F5F9',  // Slate-100 para el fondo gris
+                                            strokeLinecap: 'round'
+                                        })}
+                                    />
+                                </div>
+
+                                <div className="flex justify-between border-t border-slate-100 pt-3 text-xs text-slate-600 font-medium">
+                                    <span>Completadas: <strong className="text-slate-900">{tasks.filter(t => t.is_completed).length}</strong></span>
+                                    <span>Total: <strong className="text-slate-900">{tasks.length}</strong></span>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 )}
@@ -442,6 +574,15 @@ export default function Dashboard() {
                                                     className="w-full flex justify-center items-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 disabled:hover:bg-indigo-600"
                                                 >
                                                     <GraduationCap className="w-4 h-4" /> Calificar
+                                                </button>
+
+                                                <button 
+                                                    onClick={() => handleDownloadExcel(subject.id, subject.name)} 
+                                                    className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                                                    title="Descargar Reporte Excel"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    <span className="hidden md:inline">Exportar</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -562,6 +703,14 @@ export default function Dashboard() {
                                                 <td className="px-6 py-4 text-slate-500">{student.identifier || '-'}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
+                                                        <button 
+                                                            onClick={() => handleViewProfile(student.id)} 
+                                                            className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+                                                            title="Ver Perfil Extendido"
+                                                        >
+                                                            <Eye className="w-4 h-4" />
+                                                        </button>
+
                                                         <button onClick={() => openEditModal(student)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
                                                         <button onClick={() => handleDeleteStudent(student.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                                                     </div>
@@ -572,6 +721,105 @@ export default function Dashboard() {
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {/* VISTA: PERFIL DETALLADO DEL ALUMNO */}
+                {activeTab === 'student-profile' && (
+                    <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                        <div className="mb-6">
+                            <button 
+                                onClick={() => { setActiveTab('students'); setSelectedStudentProfile(null); }} 
+                                className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 mb-2 font-medium text-sm transition-colors"
+                            >
+                                <ArrowLeft className="w-4 h-4" /> Volver a Alumnos
+                            </button>
+                            <h2 className="text-2xl font-bold text-slate-900">Perfil del Estudiante</h2>
+                        </div>
+
+                        {loadingProfile ? (
+                            <div className="bg-white border border-slate-200 rounded-3xl p-12 flex flex-col items-center justify-center text-indigo-500">
+                                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                                <p className="text-slate-500 text-sm">Cargando historial y expediente desde el servidor...</p>
+                            </div>
+                        ) : selectedStudentProfile ? (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Tarjeta Información General */}
+                                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm h-fit space-y-4">
+                                    <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-bold text-xl">
+                                        {selectedStudentProfile.first_name?.[0]}{selectedStudentProfile.last_name?.[0]}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">
+                                            {selectedStudentProfile.first_name} {selectedStudentProfile.last_name}
+                                        </h3>
+                                        <p className="text-slate-500 text-sm">Matrícula: {selectedStudentProfile.identifier || 'Sin asignar'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Contenedor de datos adicionales: Materias y Calificaciones */}
+                                <div className="md:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
+                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 border-b border-slate-100 pb-4">
+                                        <div>
+                                            <h4 className="font-bold text-slate-800 text-lg">Historial Académico y Materias</h4>
+                                            <p className="text-xs text-slate-400">Promedio calculado a partir de las evaluaciones registradas</p>
+                                        </div>
+                                        
+                                        {/* Cálculo y visualización del Promedio General del Alumno */}
+                                        {selectedStudentProfile?.subjects && selectedStudentProfile.subjects.length > 0 && (
+                                            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 text-right">
+                                                <span className="text-xs text-indigo-600 block font-medium">Promedio General</span>
+                                                <span className="text-xl font-black text-indigo-700">
+                                                    {roundAverage(selectedStudentProfile.subjects.reduce((acc, sub) => acc + sub.average, 0) / selectedStudentProfile.subjects.length)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {selectedStudentProfile?.subjects && selectedStudentProfile.subjects.length > 0 ? (
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {selectedStudentProfile.subjects.map(sub => {
+                                                // Determinamos el color de la insignia según la calificación (Aprobado >= 6.0)
+                                                const isApproved = sub.average >= 6;
+                                                
+                                                return (
+                                                    <div key={sub.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-colors flex justify-between items-center">
+                                                        <div className="flex items-center gap-3">
+                                                            {/* Círculo indicador con el color personalizado de la materia */}
+                                                            <span 
+                                                                className="w-3 h-3 rounded-full shadow-sm" 
+                                                                style={{ backgroundColor: sub.color || '#6366f1' }}
+                                                            ></span>
+                                                            <span className="font-semibold text-slate-700 text-sm sm:text-base">{sub.name}</span>
+                                                        </div>
+                                                        
+                                                        {/* Mostrar promedio con color dinámico */}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs text-slate-400 font-medium hidden sm:inline">Promedio:</span>
+                                                            <span className={`text-sm font-bold px-3 py-1.5 rounded-xl border tracking-wider shadow-sm ${
+                                                                isApproved 
+                                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
+                                                                    : 'bg-rose-50 border-rose-200 text-rose-700'
+                                                            }`}>
+                                                                {sub.average > 0 ? sub.average.toFixed(1) : '0.0'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                                            <p className="text-slate-400 text-sm italic">Este alumno no cuenta con materias ni calificaciones vinculadas actualmente.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center text-slate-400">
+                                No se pudo encontrar la información de este estudiante.
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -612,22 +860,90 @@ export default function Dashboard() {
                 {/* VISTA: MI AGENDA (RESTAURADA) */}
                 {activeTab === 'agenda' && (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="mb-6"><h2 className="text-2xl font-bold text-slate-900">Mi Agenda Digital</h2><p className="text-slate-500 text-sm">Todas tus planeaciones generadas con IA</p></div>
+                        <div className="mb-8">
+                            <h2 className="text-2xl font-bold text-slate-900">Mi Agenda Digital</h2>
+                            <p className="text-slate-500 text-sm">Todas tus planeaciones generadas con IA</p>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {savedPlans.length === 0 ? (
-                                <div className="col-span-full bg-white border border-slate-200 border-dashed rounded-3xl p-12 text-center text-slate-400"><Archive className="w-12 h-12 mx-auto mb-4 opacity-20" />Aún no has guardado ninguna planeación.</div>
+                                <div className="col-span-full py-12 text-center text-slate-400 bg-slate-50 rounded-3xl border border-dashed">
+                                    No tienes planeaciones guardadas aún.
+                                </div>
                             ) : (
                                 savedPlans.map((plan) => (
-                                    <div key={plan.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col h-80">
+                                    <div key={plan.id} className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col h-[320px]">
                                         <div className="flex justify-between items-start mb-4">
-                                            <div><h3 className="font-bold text-lg text-slate-800 line-clamp-1">{plan.topic}</h3><span className="inline-block bg-indigo-50 text-indigo-600 text-xs font-semibold px-2.5 py-1 rounded-full mt-2">{plan.grade}</span></div>
+                                            <h3 className="font-bold text-lg text-slate-900 line-clamp-1">{plan.topic}</h3>
+                                            <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-1 rounded-lg uppercase">{plan.grade}</span>
                                         </div>
-                                        <div className="text-slate-600 text-sm line-clamp-6 mb-4 flex-1 whitespace-pre-wrap">{plan.content}</div>
-                                        <button className="w-full text-center py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-sm font-medium transition-colors border border-slate-200">Ver clase completa</button>
+                                        
+                                        <div className="text-slate-600 text-sm mb-6 flex-1 overflow-hidden line-clamp-4 whitespace-pre-wrap">
+                                            {plan.content}
+                                        </div>
+
+                                        <div className="flex gap-2 pt-4 border-t border-slate-100 mt-auto">
+                                            <button 
+                                                onClick={() => { setSelectedPlan(plan); setIsModalOpen(true); }} 
+                                                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-medium transition-all"
+                                            >
+                                                Ver clase
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDownloadPDF(plan)} 
+                                                className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeletePlan(plan.id)} 
+                                                className="px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))
                             )}
                         </div>
+
+                        {/* MODAL: VER CLASE COMPLETA */}
+                        {isModalOpen && selectedPlan && (
+                            <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                                {/* Usamos z-[100] para asegurar que esté por encima de todo */}
+                                <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+                                    <div className="p-6 border-b flex justify-between items-center">
+                                        <h2 className="text-xl font-bold text-slate-900">{selectedPlan.topic}</h2>
+                                        {/* BOTÓN DE CIERRE CORREGIDO */}
+                                        <button 
+                                            onClick={() => setIsModalOpen(false)} 
+                                            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                                        >
+                                            <X className="w-6 h-6 text-slate-500" />
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="p-6 overflow-y-auto whitespace-pre-wrap text-slate-700 leading-relaxed text-sm">
+                                        {selectedPlan.content}
+                                    </div>
+
+                                    <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                                        <button 
+                                            onClick={() => setIsModalOpen(false)} 
+                                            className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-200 rounded-xl"
+                                        >
+                                            Cerrar
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDownloadPDF(selectedPlan)} 
+                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-slate-800"
+                                        >
+                                            <Download className="w-4 h-4" /> Descargar PDF
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

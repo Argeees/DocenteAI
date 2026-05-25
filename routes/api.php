@@ -28,6 +28,9 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    //Student controller
+    Route::get('/students/{id}/profile', [StudentController::class, 'profile']);
+
     // Gestión Escolar
     Route::apiResource('students', StudentController::class);
     Route::apiResource('courses', CourseController::class);
@@ -41,6 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Materias y Matriculación
     Route::apiResource('subjects', SubjectController::class);
     Route::post('/subjects/{subject}/students', [SubjectController::class, 'syncStudents']);
+
+    // Ruta específica para exportar el Excel de una materia
+    Route::get('/subjects/{id}/export-excel', [SubjectController::class, 'exportExcel']);
 
     // Calificaciones (Rutas anidadas por materia)
     Route::get('/subjects/{subject}/grades', [GradeController::class, 'index']);

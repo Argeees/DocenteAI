@@ -10,9 +10,24 @@ class TaskController extends Controller
 {
     public function index()
     {
-        // Traemos las tareas del maestro autenticado
+        // 1. Traemos las tareas del maestro autenticado
         $tasks = Task::where('user_id', auth()->id())->latest()->get();
-        return response()->json(['success' => true, 'data' => $tasks]);
+
+        // 2. OPTIMIZACIÓN: Calculamos las estadísticas directamente aquí en la colección
+        // Esto evita hacer un contador por separado en la base de datos
+        $completed = $tasks->where('is_completed', true)->count();
+        $pending = $tasks->where('is_completed', false)->count();
+
+        // 3. Retornamos todo en una sola respuesta limpia
+        return response()->json([
+            'success' => true,
+            'data' => $tasks,
+            'stats' => [
+                'completed' => $completed,
+                'pending' => $pending,
+                'total' => $completed + $pending
+            ]
+        ]);
     }
 
     public function store(Request $request)

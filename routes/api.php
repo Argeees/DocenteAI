@@ -47,7 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Ruta específica para exportar el Excel de una materia
     Route::get('/subjects/{id}/export-excel', [SubjectController::class, 'exportExcel']);
-
+    Route::get('/subjects/{subject}/export', [App\Http\Controllers\Api\SubjectController::class, 'export']);
     // Calificaciones (Rutas anidadas por materia)
     Route::get('/subjects/{subject}/grades', [GradeController::class, 'index']);
     Route::post('/subjects/{subject}/grades', [GradeController::class, 'store']);

@@ -1,5 +1,5 @@
 // src/pages/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Users, CheckSquare, BrainCircuit, LogOut, Sparkles, Home, Eye, BookOpen, Loader2, Send, UserPlus, X, Edit2, Trash2, Save, Archive, Library, Plus, GraduationCap, ArrowLeft, ClipboardEdit, Download, Calendar } from 'lucide-react';
 import api from '../api/axios';
 import { toast } from 'sonner';
@@ -8,10 +8,12 @@ import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import html2pdf from 'html2pdf.js';
 import { jsPDF } from "jspdf";
+import { AuthContext } from '../context/AuthContext'; // Ajusta la ruta a donde viva tu contexto
 
 export default function Dashboard() {
     const [activeTab, setActiveTab] = useState('home');
     const navigate = useNavigate();
+    const { user } = useContext(AuthContext);
 
     // ==========================================
     // ESTADOS
@@ -58,7 +60,28 @@ export default function Dashboard() {
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.is_completed).length;
     const taskPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    // ==========================================
+    // FUNCIONES: EXPORTACIÓN A EXCEL
+    // ==========================================
+    const handleDownloadExcel = async (subjectId, subjectName) => {
+        try {
+            // ✅ CORREGIDO: Ahora apunta a /export-excel
+            const response = await api.get(`/api/subjects/${subjectId}/export-excel`, {
+                responseType: 'blob',
+            });
 
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Reporte_${subjectName}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error("Error al descargar el Excel", error);
+            alert("Hubo un error al intentar generar el archivo Excel.");
+        }
+    };
     // ==========================================
     // EFECTOS DE CARGA Y FETCH ULTRA-SEGUROS
     // ==========================================
@@ -151,7 +174,7 @@ export default function Dashboard() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(20);
         doc.text(plan.topic, margin, 20);
-        
+
         doc.setFont("helvetica", "normal");
         doc.setFontSize(12);
         doc.text(`Grado: ${plan.grade}`, margin, 30);
@@ -169,7 +192,7 @@ export default function Dashboard() {
             doc.text(line, margin, cursorY);
             cursorY += 7; // Espaciado entre líneas
         });
-        
+
         doc.save(`Planeacion_${plan.topic.replace(/\s+/g, '_')}.pdf`);
     };
 
@@ -347,9 +370,9 @@ export default function Dashboard() {
             console.log("Datos recibidos de la agenda:", response.data); // <--- MIRA ESTO EN LA CONSOLA (F12)
             const data = response.data?.data || response.data;
             setSavedPlans(Array.isArray(data) ? data : []);
-        } catch (error) { 
+        } catch (error) {
             console.error("Error al obtener agenda:", error);
-            setSavedPlans([]); 
+            setSavedPlans([]);
         }
     };
 
@@ -365,25 +388,25 @@ export default function Dashboard() {
     };
 
     const handleLogout = async () => {
-    try {
-        // 1. Le avisamos a Laravel que destruya el token en el servidor
-        await api.post('/api/logout');
-    } catch (error) {
-        // Si el servidor falla o el token ya expiró, imprimimos el error 
-        // pero continuamos con la limpieza en el cliente para no bloquear al usuario
-        console.error("Error al revocar token en servidor:", error);
-    } finally {
-        // 2. CRUCIAL: Borramos el token exacto que usa tu axios.js
-        localStorage.removeItem('auth_token'); 
+        try {
+            // 1. Le avisamos a Laravel que destruya el token en el servidor
+            await api.post('/api/logout');
+        } catch (error) {
+            // Si el servidor falla o el token ya expiró, imprimimos el error 
+            // pero continuamos con la limpieza en el cliente para no bloquear al usuario
+            console.error("Error al revocar token en servidor:", error);
+        } finally {
+            // 2. CRUCIAL: Borramos el token exacto que usa tu axios.js
+            localStorage.removeItem('auth_token');
 
-        // Opcional: Si manejas estados de usuario en un Context, resetealo aquí
-        // setUser(null); 
+            // Opcional: Si manejas estados de usuario en un Context, resetealo aquí
+            // setUser(null); 
 
-        // 3. Redirigimos al usuario a la Landing Page (asumiendo que es la ruta "/")
-        // Si tu landing es otra ruta, por ejemplo '/landing', cámbiala aquí
-        navigate('/', { replace: true }); 
-    }
-};
+            // 3. Redirigimos al usuario a la Landing Page (asumiendo que es la ruta "/")
+            // Si tu landing es otra ruta, por ejemplo '/landing', cámbiala aquí
+            navigate('/', { replace: true });
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans relative">
@@ -417,9 +440,13 @@ export default function Dashboard() {
                 {activeTab === 'home' && (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                         <div className="mb-8">
-                            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Hola, Maestro 👋</h1>
+                            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                                {/* Aquí hacemos la magia: tomamos el nombre del contexto y lo cortamos */}
+                                Hola, {user ? user.name.split(' ')[0] : 'Maestro'} 👋
+                            </h1>
                             <p className="text-slate-500 mt-1 text-lg">Aquí tienes el resumen de tu plataforma.</p>
                         </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <StatCard title="Alumnos" value={students.length} icon={<Users className="w-6 h-6 text-indigo-500" />} />
                             <StatCard title="Materias" value={subjects.length} icon={<Library className="w-6 h-6 text-rose-500" />} />
@@ -430,7 +457,7 @@ export default function Dashboard() {
                         {/* WIDGET DE LISTA DE PENDIENTES */}
                         {/* WIDGET DE LISTA DE PENDIENTES CON GRÁFICA SENCILLA */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start max-w-5xl">
-                            
+
                             {/* LADO IZQUIERDO: TU LISTA ACTUAL (Ocupa 2 columnas) */}
                             <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in slide-in-from-bottom-5 duration-700">
                                 <div className="flex items-center gap-3 mb-6">
@@ -576,8 +603,8 @@ export default function Dashboard() {
                                                     <GraduationCap className="w-4 h-4" /> Calificar
                                                 </button>
 
-                                                <button 
-                                                    onClick={() => handleDownloadExcel(subject.id, subject.name)} 
+                                                <button
+                                                    onClick={() => handleDownloadExcel(subject.id, subject.name)}
                                                     className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
                                                     title="Descargar Reporte Excel"
                                                 >
@@ -703,8 +730,8 @@ export default function Dashboard() {
                                                 <td className="px-6 py-4 text-slate-500">{student.identifier || '-'}</td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        <button 
-                                                            onClick={() => handleViewProfile(student.id)} 
+                                                        <button
+                                                            onClick={() => handleViewProfile(student.id)}
                                                             className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
                                                             title="Ver Perfil Extendido"
                                                         >
@@ -728,8 +755,8 @@ export default function Dashboard() {
                 {activeTab === 'student-profile' && (
                     <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                         <div className="mb-6">
-                            <button 
-                                onClick={() => { setActiveTab('students'); setSelectedStudentProfile(null); }} 
+                            <button
+                                onClick={() => { setActiveTab('students'); setSelectedStudentProfile(null); }}
                                 className="flex items-center gap-2 text-slate-500 hover:text-indigo-600 mb-2 font-medium text-sm transition-colors"
                             >
                                 <ArrowLeft className="w-4 h-4" /> Volver a Alumnos
@@ -764,7 +791,7 @@ export default function Dashboard() {
                                             <h4 className="font-bold text-slate-800 text-lg">Historial Académico y Materias</h4>
                                             <p className="text-xs text-slate-400">Promedio calculado a partir de las evaluaciones registradas</p>
                                         </div>
-                                        
+
                                         {/* Cálculo y visualización del Promedio General del Alumno */}
                                         {selectedStudentProfile?.subjects && selectedStudentProfile.subjects.length > 0 && (
                                             <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 text-right">
@@ -775,32 +802,31 @@ export default function Dashboard() {
                                             </div>
                                         )}
                                     </div>
-                                    
+
                                     {selectedStudentProfile?.subjects && selectedStudentProfile.subjects.length > 0 ? (
                                         <div className="grid grid-cols-1 gap-3">
                                             {selectedStudentProfile.subjects.map(sub => {
                                                 // Determinamos el color de la insignia según la calificación (Aprobado >= 6.0)
                                                 const isApproved = sub.average >= 6;
-                                                
+
                                                 return (
                                                     <div key={sub.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-slate-200 transition-colors flex justify-between items-center">
                                                         <div className="flex items-center gap-3">
                                                             {/* Círculo indicador con el color personalizado de la materia */}
-                                                            <span 
-                                                                className="w-3 h-3 rounded-full shadow-sm" 
+                                                            <span
+                                                                className="w-3 h-3 rounded-full shadow-sm"
                                                                 style={{ backgroundColor: sub.color || '#6366f1' }}
                                                             ></span>
                                                             <span className="font-semibold text-slate-700 text-sm sm:text-base">{sub.name}</span>
                                                         </div>
-                                                        
+
                                                         {/* Mostrar promedio con color dinámico */}
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-xs text-slate-400 font-medium hidden sm:inline">Promedio:</span>
-                                                            <span className={`text-sm font-bold px-3 py-1.5 rounded-xl border tracking-wider shadow-sm ${
-                                                                isApproved 
-                                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700' 
-                                                                    : 'bg-rose-50 border-rose-200 text-rose-700'
-                                                            }`}>
+                                                            <span className={`text-sm font-bold px-3 py-1.5 rounded-xl border tracking-wider shadow-sm ${isApproved
+                                                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                                                : 'bg-rose-50 border-rose-200 text-rose-700'
+                                                                }`}>
                                                                 {sub.average > 0 ? sub.average.toFixed(1) : '0.0'}
                                                             </span>
                                                         </div>
@@ -877,26 +903,26 @@ export default function Dashboard() {
                                             <h3 className="font-bold text-lg text-slate-900 line-clamp-1">{plan.topic}</h3>
                                             <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-1 rounded-lg uppercase">{plan.grade}</span>
                                         </div>
-                                        
+
                                         <div className="text-slate-600 text-sm mb-6 flex-1 overflow-hidden line-clamp-4 whitespace-pre-wrap">
                                             {plan.content}
                                         </div>
 
                                         <div className="flex gap-2 pt-4 border-t border-slate-100 mt-auto">
-                                            <button 
-                                                onClick={() => { setSelectedPlan(plan); setIsModalOpen(true); }} 
+                                            <button
+                                                onClick={() => { setSelectedPlan(plan); setIsModalOpen(true); }}
                                                 className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-medium transition-all"
                                             >
                                                 Ver clase
                                             </button>
-                                            <button 
-                                                onClick={() => handleDownloadPDF(plan)} 
+                                            <button
+                                                onClick={() => handleDownloadPDF(plan)}
                                                 className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all"
                                             >
                                                 <Download className="w-4 h-4" />
                                             </button>
-                                            <button 
-                                                onClick={() => handleDeletePlan(plan.id)} 
+                                            <button
+                                                onClick={() => handleDeletePlan(plan.id)}
                                                 className="px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all"
                                             >
                                                 <Trash2 className="w-4 h-4" />
@@ -915,27 +941,27 @@ export default function Dashboard() {
                                     <div className="p-6 border-b flex justify-between items-center">
                                         <h2 className="text-xl font-bold text-slate-900">{selectedPlan.topic}</h2>
                                         {/* BOTÓN DE CIERRE CORREGIDO */}
-                                        <button 
-                                            onClick={() => setIsModalOpen(false)} 
+                                        <button
+                                            onClick={() => setIsModalOpen(false)}
                                             className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                                         >
                                             <X className="w-6 h-6 text-slate-500" />
                                         </button>
                                     </div>
-                                    
+
                                     <div className="p-6 overflow-y-auto whitespace-pre-wrap text-slate-700 leading-relaxed text-sm">
                                         {selectedPlan.content}
                                     </div>
 
                                     <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-                                        <button 
-                                            onClick={() => setIsModalOpen(false)} 
+                                        <button
+                                            onClick={() => setIsModalOpen(false)}
                                             className="px-4 py-2 text-slate-600 text-sm font-medium hover:bg-slate-200 rounded-xl"
                                         >
                                             Cerrar
                                         </button>
-                                        <button 
-                                            onClick={() => handleDownloadPDF(selectedPlan)} 
+                                        <button
+                                            onClick={() => handleDownloadPDF(selectedPlan)}
                                             className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-slate-800"
                                         >
                                             <Download className="w-4 h-4" /> Descargar PDF

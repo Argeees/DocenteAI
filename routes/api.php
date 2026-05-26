@@ -10,6 +10,9 @@ use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\AiPlannerController;
 use App\Http\Controllers\Api\LessonPlanController;
 use App\Http\Controllers\Api\SubjectController;
+use App\Http\Controllers\Api\PaymentController;
+
+Route::post('/mercadopago/webhook', [PaymentController::class, 'webhook']);
 
 // ==========================================
 // RUTAS PÚBLICAS (No requieren token)
@@ -27,6 +30,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+
+    // Pagos
+    Route::post('/payments/create-preference', [PaymentController::class, 'createPreference']);
+    Route::get('/payments/status', [PaymentController::class, 'status']);
+
 
     //Student controller
     Route::get('/students/{id}/profile', [StudentController::class, 'profile']);

@@ -24,6 +24,10 @@ export default function Dashboard() {
     const [generatedPlan, setGeneratedPlan] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [savedPlans, setSavedPlans] = useState([]);
+    const [isPremium, setIsPremium] = useState(false);
+    const [subscription, setSubscription] = useState(null);
+    const [isCheckingPremium, setIsCheckingPremium] = useState(true);
+    const [isCreatingPayment, setIsCreatingPayment] = useState(false);
     const [isSavingPlan, setIsSavingPlan] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -86,11 +90,30 @@ export default function Dashboard() {
     // EFECTOS DE CARGA Y FETCH ULTRA-SEGUROS
     // ==========================================
     useEffect(() => {
+        checkPremiumStatus();
+
         if (activeTab === 'home' || activeTab === 'students' || activeTab === 'subjects') fetchStudents();
         if (activeTab === 'home' || activeTab === 'agenda') fetchPlans();
         if (activeTab === 'home' || activeTab === 'subjects') fetchSubjects();
         if (activeTab === 'home') fetchTasks();
     }, [activeTab]);
+
+    const checkPremiumStatus = async () => {
+        try {
+            const response = await api.get('/api/payments/status');
+
+            setIsPremium(response.data.is_premium);
+            setSubscription(response.data.subscription);
+        } catch (error) {
+            console.error('Error al revisar suscripción:', error);
+            setIsPremium(false);
+            setSubscription(null);
+        } finally {
+            setIsCheckingPremium(false);
+        }
+    };
+
+
 
     const fetchStudents = async () => {
         try {
@@ -337,6 +360,30 @@ export default function Dashboard() {
     // ==========================================
     // FUNCIONES: IA Y AGENDA
     // ==========================================
+    const handleCreatePayment = async (planType) => {
+        try {
+            setIsCreatingPayment(true);
+
+            const response = await api.post('/api/payments/create-preference', {
+                plan_type: planType,
+            });
+
+            const paymentUrl = response.data.sandbox_init_point || response.data.init_point;
+
+            if (!paymentUrl) {
+                alert('No se pudo generar el enlace de pago');
+                return;
+            }
+
+            window.location.href = paymentUrl;
+        } catch (error) {
+            console.error('Error al crear pago:', error);
+            alert('Ocurrió un error al crear el pago. Intenta de nuevo');
+        } finally {
+            setIsCreatingPayment(false);
+        }
+    };
+    
     const handleGeneratePlan = async (e) => {
         e.preventDefault();
         if (!grade || !topic) return;
@@ -857,13 +904,110 @@ export default function Dashboard() {
                                 <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600"><BrainCircuit className="w-6 h-6" /></div>
                                 <div><h2 className="text-xl font-bold text-slate-900">Asistente IA</h2><p className="text-sm text-slate-500">Genera tu clase en segundos</p></div>
                             </div>
-                            <form onSubmit={handleGeneratePlan} className="space-y-5">
-                                <div><label className="block text-sm font-semibold text-slate-700 mb-2">Grado / Nivel</label><input type="text" value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="Ej. 3ro de Primaria" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500" required /></div>
-                                <div><label className="block text-sm font-semibold text-slate-700 mb-2">Tema de la clase</label><textarea value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ej. El ciclo del agua..." rows="4" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none resize-none focus:border-indigo-500" required /></div>
-                                <button type="submit" disabled={isGenerating || !topic || !grade} className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 shadow-md">
-                                    {isGenerating ? <><Loader2 className="w-5 h-5 animate-spin" /> Generando...</> : <><Sparkles className="w-5 h-5" /> Generar Planeación</>}
-                                </button>
-                            </form>
+                           
+                           {isCheckingPremium ? (
+                                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-3 text-indigo-600" />
+                                    <p className="text-sm text-slate-500">Revisando tu acceso PRO...</p>
+                                </div>
+                            ) : !isPremium ? (
+                                <div className="space-y-4">
+                                    <div className="p-5 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                                        <h3 className="font-bold text-indigo-900 mb-2">Desbloquea el Asistente IA</h3>
+                                        <p className="text-sm text-indigo-700">
+                                            Para generar planeaciones con inteligencia artificial necesitas activar DocenteAI PRO
+                                        </p>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCreatePayment('monthly')}
+                                        disabled={isCreatingPayment}
+                                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 shadow-md"
+                                    >
+                                        {isCreatingPayment ? (
+                                            <>
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                Preparando pago...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="w-5 h-5" />
+                                                Activar mensual - $99 MXN
+                                            </>
+                                        )}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleCreatePayment('quarterly')}
+                                        disabled={isCreatingPayment}
+                                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-white border border-indigo-200 text-indigo-700 rounded-xl text-sm font-bold disabled:opacity-50 hover:bg-indigo-50"
+                                    >
+                                        Activar trimestral - $249 MXN
+                                    </button>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleGeneratePlan} className="space-y-5">
+                                    <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                                        <p className="text-sm font-semibold text-emerald-700">
+                                            Acceso PRO activo
+                                        </p>
+                                        {subscription?.ends_at && (
+                                            <p className="text-xs text-emerald-600 mt-1">
+                                                Vigente hasta: {new Date(subscription.ends_at).toLocaleDateString()}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                            Grado / Nivel
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={grade}
+                                            onChange={(e) => setGrade(e.target.value)}
+                                            placeholder="Ej. 3ro de Primaria"
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                            Tema de la clase
+                                        </label>
+                                        <textarea
+                                            value={topic}
+                                            onChange={(e) => setTopic(e.target.value)}
+                                            placeholder="Ej. El ciclo del agua..."
+                                            rows="4"
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none resize-none focus:border-indigo-500"
+                                            required
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isGenerating || !topic || !grade}
+                                        className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-indigo-600 to-cyan-500 text-white rounded-xl text-sm font-bold disabled:opacity-50 shadow-md"
+                                    >
+                                        {isGenerating ? (
+                                            <>
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                Generando...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="w-5 h-5" />
+                                                Generar Planeación
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
+                            )}
+
                         </div>
                         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
                             <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between">

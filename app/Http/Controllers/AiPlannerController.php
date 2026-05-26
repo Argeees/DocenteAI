@@ -9,6 +9,18 @@ class AiPlannerController extends Controller
 {
     public function generate(Request $request)
     {
+        $user = $request->user();
+
+        $hasActiveSubscription = \App\Models\Subscription::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->where('ends_at', '>', now())
+            ->exists();
+
+        if (!$hasActiveSubscription) {
+            return response()->json([
+                'message' => 'Necesitas activar DocenteAI PRO para generar planeaciones con IA',
+            ], 403);
+        }
         try {
             $request->validate([
                 'grade' => 'required|string',

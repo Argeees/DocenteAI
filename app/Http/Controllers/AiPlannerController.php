@@ -27,7 +27,7 @@ class AiPlannerController extends Controller
                 'topic' => 'required|string',
             ]);
 
-            $apiKey = trim(env('GEMINI_API_KEY'));
+            $apiKey = trim(config('services.gemini.key'));
 
             if (empty($apiKey)) {
                 return response()->json(['message' => 'Falta la API Key en el archivo .env'], 500);
